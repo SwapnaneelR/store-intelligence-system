@@ -1,0 +1,183 @@
+services:
+
+  # ── Infrastructure ─────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: store_intelligence
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d store_intelligence"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - store-net
+
+  redis:
+    image: redis:7-alpine
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - store-net
+
+  # ── Migrations (runs once, exits) ──────────────────────────────────────────
+
+  migrator:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/store_intelligence
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - store-net
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/store_intelligence
+      REDIS_URL: redis://redis:6379/0
+      LOG_FORMAT: json
+      LOG_LEVEL: INFO
+      DEBUG: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >
+          python -c
+          "import urllib.request, sys;
+          r=urllib.request.urlopen('http://localhost:8000/health', timeout=4);
+          sys.exit(0 if r.status==200 else 1)"
+      interval: 10s
+      timeout: 6s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - store-net
+
+  # ── Next.js Frontend ───────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - store-net
+
+  # ── CV Tracker ─────────────────────────────────────────────────────────────
+
+  tracker:
+    build:
+      context: ./services/tracker
+      dockerfile: Dockerfile
+    environment:
+      API_BASE_URL: http://api:8000
+      REDIS_URL: redis://redis:6379/0
+      VIDEO_DIR: /videos
+      YOLO_MODEL: yolo11n.pt
+      YOLO_CONF: "0.35"
+      PROCESS_EVERY_N_FRAMES: "3"
+      DWELL_THRESHOLD_S: "20"
+      LONG_STAY_THRESHOLD_S: "1800"
+      CROWD_SURGE_RATIO: "2.0"
+    volumes:
+      - ./dataset/CCTV Footage-20260529T160731Z-3-00144614ea/CCTV Footage:/videos:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - store-net
+
+  # ── Dev Tools  (opt-in: docker compose --profile tools up) ────────────────
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    profiles: ["tools"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@store.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - store-net
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    profiles: ["tools"]
+    environment:
+      REDIS_HOSTS: store:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - store-net
+
+# ── Volumes & Networks ─────────────────────────────────────────────────────
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  store-net:
+    driver: bridge
