@@ -2,13 +2,12 @@
 
 > **AI-powered retail analytics platform** — converts CCTV footage into real-time visitor tracking, business KPIs, anomaly detection, and a live operations dashboard.
 
-**Purplle · Brigade Road, Bangalore · Assessment Submission**
+**Purplle Tech Challenge 2026· Swapnaneel Ray · Assessment Submission**
 
 ---
 
 ## Index
 
-### This File
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
 - [Services](#services)
