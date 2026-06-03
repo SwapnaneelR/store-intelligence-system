@@ -1,6 +1,5 @@
-# ── Large dataset files (videos too big for git) ──────────────────────────────
-dataset/CCTV Footage*/
-dataset/*.mp4
+# ── Dataset (not included in repo) ───────────────────────────────────────────
+dataset/
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
