@@ -6,6 +6,30 @@
 
 ---
 
+## Index
+
+### This File
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Services](#services)
+- [API Reference](#api-reference)
+- [Dashboard Pages](#dashboard-pages)
+- [Make Commands](#make-commands)
+- [Project Structure](#project-structure)
+- [Environment Variables](#environment-variables)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+
+### Documentation
+| Document | Description |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 11 system design diagrams — C4, ERD, sequence, data flow, deployment |
+| [DESIGN.md](DESIGN.md) | Full architecture, API contract, database schema, scalability notes |
+| [CHOICES.md](CHOICES.md) | 11 technology decisions with alternatives considered and trade-offs |
+| [scripts/youtube_script.md](scripts/youtube_script.md) | YouTube video script — title, description, timestamps, B-roll guide |
+
+---
+
 ## Quick Start
 
 ```bash
