@@ -33,7 +33,12 @@ class AnalyticsService:
         for label, event_type in _FUNNEL_STAGES:
             count = counts.get(event_type.value, 0)
             drop_off = (prev_count - count) if prev_count is not None else 0
-            conversion_rate = (count / prev_count * 100.0) if prev_count and prev_count > 0 else 100.0
+            if prev_count is None:
+                conversion_rate = 100.0          # first stage — no prior stage to compare
+            elif prev_count == 0:
+                conversion_rate = 0.0            # zero in previous stage → 0% conversion
+            else:
+                conversion_rate = count / prev_count * 100.0
 
             stages.append(
                 FunnelStage(
