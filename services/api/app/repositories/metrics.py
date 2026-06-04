@@ -45,8 +45,8 @@ class MetricsRepository:
             select(func.avg(Session.exited_at - Session.entered_at))
             .where(
                 Session.entered_at >= date_start,
+                Session.entered_at <= date_end,
                 Session.exited_at.isnot(None),
-                Session.exited_at <= date_end,
             )
         )
         result = await self.session.execute(stmt)

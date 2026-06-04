@@ -72,6 +72,7 @@ async def _sync_session(db: AsyncSession, payload: EventIngest) -> None:
                 entry_zone_id=payload.zone_id,
             )
             db.add(visit)
+            await db.flush()  # make session visible to subsequent EXIT UPDATE in same batch
     elif payload.event_type == EventType.EXIT:
         stmt = (
             update(VisitSession)
