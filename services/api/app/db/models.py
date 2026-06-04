@@ -32,8 +32,7 @@ class Camera(Base):
     status: Mapped[str] = mapped_column(String(50), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    events: Mapped[list["Event"]] = relationship(back_populates="camera", lazy="noload")
-    zones: Mapped[list["Zone"]] = relationship(back_populates="camera", lazy="noload")
+    pass  # zones relationship removed — Zone.camera_id is now plain varchar
 
 
 class StoreLayout(Base):
@@ -46,15 +45,15 @@ class StoreLayout(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    zones: Mapped[list["Zone"]] = relationship(back_populates="layout", lazy="noload")
+    pass  # zones relationship removed — Zone.layout_id is now plain varchar
 
 
 class Zone(Base):
     __tablename__ = "zones"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: __import__("uuid").uuid4().hex)
-    layout_id: Mapped[str | None] = mapped_column(ForeignKey("store_layouts.id"), nullable=True)
-    camera_id: Mapped[str | None] = mapped_column(ForeignKey("cameras.id"), nullable=True)
+    layout_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    camera_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     zone_type: Mapped[str] = mapped_column(String(100), nullable=False)
     polygon: Mapped[list] = mapped_column(JSONB, nullable=False)
@@ -62,24 +61,21 @@ class Zone(Base):
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    layout: Mapped["StoreLayout | None"] = relationship(back_populates="zones", lazy="noload")
-    camera: Mapped["Camera | None"] = relationship(back_populates="zones", lazy="noload")
-
 
 class Session(Base):
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: __import__("uuid").uuid4().hex)
     track_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    camera_id: Mapped[str | None] = mapped_column(ForeignKey("cameras.id"), nullable=True)
+    camera_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     person_class: Mapped[str] = mapped_column(String(50), default="customer")
     entered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     exited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    entry_zone_id: Mapped[str | None] = mapped_column(ForeignKey("zones.id"), nullable=True)
-    exit_zone_id: Mapped[str | None] = mapped_column(ForeignKey("zones.id"), nullable=True)
+    entry_zone_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    exit_zone_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
 
-    events: Mapped[list["Event"]] = relationship(back_populates="session", lazy="noload")
+    pass  # events relationship removed — session_id on Event is now plain varchar
 
 
 class Event(Base):
@@ -88,18 +84,17 @@ class Event(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: __import__("uuid").uuid4().hex)
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    camera_id: Mapped[str | None] = mapped_column(ForeignKey("cameras.id"), nullable=True)
+    camera_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     track_id: Mapped[str | None] = mapped_column(String(255))
-    session_id: Mapped[str | None] = mapped_column(ForeignKey("sessions.id"), nullable=True)
-    zone_id: Mapped[str | None] = mapped_column(ForeignKey("zones.id"), nullable=True)
+    session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    zone_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     group_id: Mapped[str | None] = mapped_column(String(255))
     person_class: Mapped[str | None] = mapped_column(String(50))
     confidence: Mapped[float | None] = mapped_column(Float)
     bbox: Mapped[dict | None] = mapped_column(JSONB)
     metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
 
-    camera: Mapped["Camera | None"] = relationship(back_populates="events", lazy="noload")
-    session: Mapped["Session | None"] = relationship(back_populates="events", lazy="noload")
+    # Relationships removed — camera_id/session_id/zone_id are now plain varchar columns
 
     __table_args__ = (
         Index("idx_events_type_ts", "event_type", "timestamp"),

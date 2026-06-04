@@ -21,11 +21,12 @@ LAYOUT_PATH = Path(__file__).parent.parent / "dataset" / "Brigade Road - Store l
 # Image 2 (bottom layout): y ∈ [317, 541] — "Current" layout (use this one)
 
 CAMERAS = [
-    {"name": "CAM 1", "location": "Entrance / Front",  "file": "CAM 1.mp4"},
-    {"name": "CAM 2", "location": "Centre Aisle",      "file": "CAM 2.mp4"},
-    {"name": "CAM 3", "location": "Rear / Skin Zone",  "file": "CAM 3.mp4"},
-    {"name": "CAM 4", "location": "Makeup Zone",       "file": "CAM 4.mp4"},
-    {"name": "CAM 5", "location": "Checkout / Exit",   "file": "CAM 5.mp4"},
+    # IDs must match what the tracker emits: camera_id = f"cam_{i+1}"
+    {"id": "cam_1", "name": "CAM 1", "location": "Entrance / Front",  "file": "CAM 1.mp4"},
+    {"id": "cam_2", "name": "CAM 2", "location": "Centre Aisle",      "file": "CAM 2.mp4"},
+    {"id": "cam_3", "name": "CAM 3", "location": "Rear / Skin Zone",  "file": "CAM 3.mp4"},
+    {"id": "cam_4", "name": "CAM 4", "location": "Makeup Zone",       "file": "CAM 4.mp4"},
+    {"id": "cam_5", "name": "CAM 5", "location": "Checkout / Exit",   "file": "CAM 5.mp4"},
 ]
 
 # Zones derived from the "Current" layout (Image 2) textbox labels.
@@ -33,19 +34,44 @@ CAMERAS = [
 # Origin: top-left corner of the store floor plan image.
 # Image dims used for normalisation: W≈470, H≈224 pts.
 ZONES = [
-    # Entrance / Exit
+    # ── Tracker-compatible coarse zones (IDs must match tracker/_DEFAULT_ZONES) ──
+    # These are used by the CV tracker for event generation.
     {
+        "id": "zone_entrance",
         "name": "Entrance",
         "zone_type": "ENTRANCE",
         "polygon": [[0.0, 0.85], [0.18, 0.85], [0.18, 1.0], [0.0, 1.0]],
         "color": "#22c55e",
     },
     {
+        "id": "zone_exit",
         "name": "Exit / Checkout",
         "zone_type": "EXIT",
         "polygon": [[0.82, 0.85], [1.0, 0.85], [1.0, 1.0], [0.82, 1.0]],
         "color": "#ef4444",
     },
+    {
+        "id": "zone_skincare_row",
+        "name": "Skincare Row",
+        "zone_type": "PRODUCT",
+        "polygon": [[0.0, 0.0], [1.0, 0.0], [1.0, 0.3], [0.0, 0.3]],
+        "color": "#3b82f6",
+    },
+    {
+        "id": "zone_makeup_row",
+        "name": "Makeup Row",
+        "zone_type": "PRODUCT",
+        "polygon": [[0.0, 0.5], [1.0, 0.5], [1.0, 0.85], [0.0, 0.85]],
+        "color": "#ec4899",
+    },
+    {
+        "id": "zone_aisle",
+        "name": "Centre Aisle",
+        "zone_type": "WALKWAY",
+        "polygon": [[0.0, 0.3], [1.0, 0.3], [1.0, 0.5], [0.0, 0.5]],
+        "color": "#94a3b8",
+    },
+    # ── Fine-grained brand zones from store layout Excel ──────────────────────
     # Skin-care brand row (top shelf — positions from TextBox 30-35)
     {
         "name": "EB / Exclusive Brands",
@@ -200,7 +226,7 @@ def seed_direct(db_url: str) -> None:
         async with async_session() as session:
             for cam in CAMERAS:
                 c = Camera(
-                    id=uuid.uuid4().hex,
+                    id=cam.get("id", uuid.uuid4().hex),
                     name=cam["name"],
                     location=cam["location"],
                     status="active",
@@ -209,7 +235,7 @@ def seed_direct(db_url: str) -> None:
 
             for zone in ZONES:
                 z = Zone(
-                    id=uuid.uuid4().hex,
+                    id=zone.get("id", uuid.uuid4().hex),
                     name=zone["name"],
                     zone_type=zone["zone_type"],
                     polygon=zone["polygon"],

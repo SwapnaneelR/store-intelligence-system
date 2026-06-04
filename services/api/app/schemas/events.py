@@ -39,7 +39,7 @@ class EventRead(BaseModel):
     person_class: str | None
     confidence: float | None
     bbox: BBox | None = None
-    metadata_: dict[str, Any] | None = Field(None, alias="metadata")
+    metadata_: dict[str, Any] | None = Field(None, serialization_alias="metadata")
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
