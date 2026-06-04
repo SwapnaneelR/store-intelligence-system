@@ -173,9 +173,10 @@ async def process_video(
         anomaly_eng.run(event_eng, timestamp)
         anomaly_eng.check_camera_freeze(timestamp)
 
-        # Yield control every 10 frames so API flush can run
-        if fn % 10 == 0:
-            await asyncio.sleep(0)
+        # Yield control every frame so the periodic API flush task can run.
+        # YOLO on CPU takes 200ms-2s per frame; without yielding, the flush
+        # task starves and events accumulate in memory rather than reaching the DB.
+        await asyncio.sleep(0)
 
     logger.info("video_complete", camera=camera_id, file=video_path.name)
 
