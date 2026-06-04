@@ -22,7 +22,7 @@ from app.db.base import Base
 class Camera(Base):
     __tablename__ = "cameras"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: __import__("uuid").uuid4().hex)
+    id: Mapped[str] = mapped_column(String(255), primary_key=True, default=lambda: __import__("uuid").uuid4().hex)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     location: Mapped[str | None] = mapped_column(Text)
     rtsp_url: Mapped[str | None] = mapped_column(Text)
@@ -51,7 +51,7 @@ class StoreLayout(Base):
 class Zone(Base):
     __tablename__ = "zones"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: __import__("uuid").uuid4().hex)
+    id: Mapped[str] = mapped_column(String(255), primary_key=True, default=lambda: __import__("uuid").uuid4().hex)
     layout_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     camera_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)

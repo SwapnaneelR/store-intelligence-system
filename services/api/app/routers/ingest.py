@@ -5,12 +5,15 @@ from datetime import datetime
 import structlog
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Event
+from app.db.models import Session as VisitSession
 from app.db.session import get_db
 from app.redis_client import publish_event
 from app.routers.metrics import events_ingested_total
+from app.schemas.events import EventType
 from app.schemas.ingest import BatchIngest, BatchIngestResponse, EventIngest, EventIngestResponse
 
 router = APIRouter(prefix="/ingest", tags=["Ingest"])
@@ -50,6 +53,32 @@ def _event_to_json(ev: Event) -> str:
         "person_class": ev.person_class,
         "confidence": ev.confidence,
     })
+
+
+async def _sync_session(db: AsyncSession, payload: EventIngest) -> None:
+    """Create or update a Session row when ENTRY/EXIT events arrive from the tracker."""
+    if not payload.session_id or payload.event_type not in (EventType.ENTRY, EventType.EXIT):
+        return
+
+    if payload.event_type == EventType.ENTRY:
+        existing = await db.get(VisitSession, payload.session_id)
+        if not existing:
+            visit = VisitSession(
+                id=payload.session_id,
+                track_id=payload.track_id or "unknown",
+                camera_id=payload.camera_id,
+                person_class=(payload.person_class.value if payload.person_class else "customer"),
+                entered_at=payload.timestamp,
+                entry_zone_id=payload.zone_id,
+            )
+            db.add(visit)
+    elif payload.event_type == EventType.EXIT:
+        stmt = (
+            update(VisitSession)
+            .where(VisitSession.id == payload.session_id)
+            .values(exited_at=payload.timestamp, exit_zone_id=payload.zone_id)
+        )
+        await db.execute(stmt)
 
 
 async def _write_event(session: AsyncSession, payload: EventIngest) -> Event:
@@ -143,6 +172,7 @@ async def ingest_batch(
     events = []
     for item in payload.events:
         ev = await _write_event(session, item)
+        await _sync_session(session, item)
         events.append(ev)
     await session.commit()
     for ev in events:

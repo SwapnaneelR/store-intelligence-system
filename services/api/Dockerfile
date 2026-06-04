@@ -13,6 +13,7 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # --- final image ---
 FROM deps AS runtime
+# bust cache: 2026-06-04-v3
 COPY alembic.ini .
 COPY alembic/ alembic/
 COPY app/ app/

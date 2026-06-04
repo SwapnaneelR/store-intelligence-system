@@ -3,6 +3,11 @@
 Revision ID: 001
 Revises:
 Create Date: 2026-06-01 00:00:00.000000
+
+Design note: camera_id / session_id / zone_id on events and sessions are
+VARCHAR(255), not UUID FK references. The tracker service uses logical string
+IDs (cam_1, zone_entrance) that don't match DB-generated UUIDs. Using plain
+varchar columns means events always store regardless of lookup-table state.
 """
 
 from alembic import op
@@ -18,7 +23,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "cameras",
-        sa.Column("id", UUID(as_uuid=False), primary_key=True),
+        sa.Column("id", sa.String(255), primary_key=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("location", sa.Text()),
         sa.Column("rtsp_url", sa.Text()),
@@ -41,9 +46,9 @@ def upgrade() -> None:
 
     op.create_table(
         "zones",
-        sa.Column("id", UUID(as_uuid=False), primary_key=True),
-        sa.Column("layout_id", UUID(as_uuid=False), sa.ForeignKey("store_layouts.id"), nullable=True),
-        sa.Column("camera_id", UUID(as_uuid=False), sa.ForeignKey("cameras.id"), nullable=True),
+        sa.Column("id", sa.String(255), primary_key=True),
+        sa.Column("layout_id", sa.String(255), nullable=True),
+        sa.Column("camera_id", sa.String(255), nullable=True),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("zone_type", sa.String(100), nullable=False),
         sa.Column("polygon", JSONB(), nullable=False),
@@ -56,12 +61,12 @@ def upgrade() -> None:
         "sessions",
         sa.Column("id", UUID(as_uuid=False), primary_key=True),
         sa.Column("track_id", sa.String(255), nullable=False),
-        sa.Column("camera_id", UUID(as_uuid=False), sa.ForeignKey("cameras.id"), nullable=True),
+        sa.Column("camera_id", sa.String(255), nullable=True),
         sa.Column("person_class", sa.String(50), server_default="customer"),
         sa.Column("entered_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("exited_at", sa.DateTime(timezone=True)),
-        sa.Column("entry_zone_id", UUID(as_uuid=False), sa.ForeignKey("zones.id"), nullable=True),
-        sa.Column("exit_zone_id", UUID(as_uuid=False), sa.ForeignKey("zones.id"), nullable=True),
+        sa.Column("entry_zone_id", sa.String(255), nullable=True),
+        sa.Column("exit_zone_id", sa.String(255), nullable=True),
         sa.Column("metadata", JSONB()),
     )
     op.create_index("idx_sessions_track_id", "sessions", ["track_id"])
@@ -71,10 +76,10 @@ def upgrade() -> None:
         sa.Column("id", UUID(as_uuid=False), primary_key=True),
         sa.Column("event_type", sa.String(100), nullable=False),
         sa.Column("timestamp", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
-        sa.Column("camera_id", UUID(as_uuid=False), sa.ForeignKey("cameras.id"), nullable=True),
+        sa.Column("camera_id", sa.String(255), nullable=True),
         sa.Column("track_id", sa.String(255)),
-        sa.Column("session_id", UUID(as_uuid=False), sa.ForeignKey("sessions.id"), nullable=True),
-        sa.Column("zone_id", UUID(as_uuid=False), sa.ForeignKey("zones.id"), nullable=True),
+        sa.Column("session_id", sa.String(255), nullable=True),
+        sa.Column("zone_id", sa.String(255), nullable=True),
         sa.Column("group_id", sa.String(255)),
         sa.Column("person_class", sa.String(50)),
         sa.Column("confidence", sa.Float()),
@@ -89,7 +94,7 @@ def upgrade() -> None:
     op.create_table(
         "anomalies",
         sa.Column("id", UUID(as_uuid=False), primary_key=True),
-        sa.Column("event_id", UUID(as_uuid=False), sa.ForeignKey("events.id"), nullable=True),
+        sa.Column("event_id", UUID(as_uuid=False), nullable=True),
         sa.Column("anomaly_type", sa.String(100), nullable=False),
         sa.Column("severity", sa.String(50), nullable=False),
         sa.Column("resolved", sa.Boolean(), server_default="false"),
