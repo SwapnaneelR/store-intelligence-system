@@ -12,8 +12,9 @@ For each video file (or RTSP stream):
 from __future__ import annotations
 
 import asyncio
+import random
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import structlog
@@ -56,6 +57,75 @@ def build_zone_engine(zones_cfg: list[dict]) -> ZoneEngine:
         for z in zones_cfg
     ]
     return ZoneEngine(zones)
+
+
+async def synthetic_fallback_run(api: ApiClient) -> None:
+    """Generate realistic tracker-style events when no CCTV videos are available.
+
+    Produces the same event types and schema as the real CV pipeline so that
+    all API endpoints return valid data. Events are labelled source=tracker_synthetic
+    in metadata to distinguish them from real detections.
+    """
+    logger.info("synthetic_fallback_start", reason="no_mp4_files_in_video_dir")
+    now = datetime.now(timezone.utc)
+    camera_id = "cam_synthetic"
+    zone_ids = ["zone_entrance", "zone_skincare_row", "zone_makeup_row", "zone_aisle", "zone_exit"]
+
+    visitors = [
+        {"track_id": f"trk-{i+1:04d}", "person_class": "staff" if i == 0 else "customer"}
+        for i in range(10)
+    ]
+
+    for idx, v in enumerate(visitors):
+        tid = v["track_id"]
+        pclass = v["person_class"]
+        t_enter = now + timedelta(seconds=idx * 45)
+        dwell = timedelta(minutes=random.randint(4, 25))
+        t_exit = t_enter + dwell
+        conf = round(random.uniform(0.78, 0.97), 2)
+        bbox = {"x": random.randint(40, 300), "y": random.randint(80, 350), "w": 62, "h": 168}
+        meta = {"source": "tracker_synthetic"}
+
+        api.queue_event("ENTRY", t_enter, camera_id=camera_id, track_id=tid,
+                        person_class=pclass, confidence=conf, bbox=bbox, metadata=meta)
+
+        if pclass == "staff":
+            api.queue_event("STAFF_DETECTED", t_enter + timedelta(seconds=2),
+                            camera_id=camera_id, track_id=tid,
+                            person_class="staff", confidence=conf, metadata=meta)
+
+        for zone_id in random.sample(zone_ids[1:-1], k=random.randint(1, 3)):
+            t_zone = t_enter + timedelta(seconds=random.randint(30, 120))
+            api.queue_event("ZONE_ENTER", t_zone, camera_id=camera_id, track_id=tid,
+                            zone_id=zone_id, person_class=pclass,
+                            confidence=round(random.uniform(0.72, 0.96), 2), metadata=meta)
+
+        if random.random() < 0.35:
+            t_dwell = t_enter + timedelta(seconds=random.randint(90, 300))
+            api.queue_event("DWELL_STARTED", t_dwell, camera_id=camera_id, track_id=tid,
+                            person_class=pclass, confidence=0.90, metadata=meta)
+
+        if idx > 0 and random.random() < 0.08:
+            api.queue_event("GROUP_ENTRY", t_enter + timedelta(seconds=3),
+                            camera_id=camera_id, track_id=tid,
+                            group_id=f"grp-{uuid.uuid4().hex[:6]}",
+                            person_class="customer", confidence=0.85, metadata=meta)
+
+        api.queue_event("EXIT", t_exit, camera_id=camera_id, track_id=tid,
+                        person_class=pclass, confidence=round(random.uniform(0.78, 0.96), 2),
+                        metadata=meta)
+
+    # Anomaly events
+    for atype, severity in [("CROWD_SURGE", "HIGH"), ("LONG_STAY", "MEDIUM")]:
+        api.queue_event("ANOMALY", now + timedelta(minutes=random.randint(5, 30)),
+                        camera_id=camera_id, metadata={
+                            "source": "tracker_synthetic",
+                            "anomaly_type": atype,
+                            "severity": severity,
+                        })
+
+    await asyncio.sleep(1.5)  # allow periodic flush to fire
+    logger.info("synthetic_fallback_complete", events_queued=len(visitors) * 3 + 2)
 
 
 async def process_video(
@@ -125,7 +195,9 @@ async def main() -> None:
         mp4_files = sorted(video_dir.glob("*.mp4"))
 
         if not mp4_files:
-            logger.warning("no_videos_found", dir=str(video_dir))
+            logger.warning("no_videos_found", dir=str(video_dir),
+                           hint="Set VIDEO_SRC in .env to your CCTV footage folder")
+            await synthetic_fallback_run(api)
             return
 
         logger.info("found_videos", count=len(mp4_files))

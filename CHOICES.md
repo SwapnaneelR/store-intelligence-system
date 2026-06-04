@@ -10,7 +10,7 @@ This document records the non-obvious decisions made in this system, the alterna
 
 ### Decision
 
-Use YOLOv11 (ultralytics, `yolo11m` variant) for person detection and staff classification.
+Use YOLOv11 (ultralytics, `yolo11n` nano variant) for person detection and staff classification.
 
 ### Reasoning
 
@@ -18,7 +18,7 @@ Retail person-counting needs **real-time throughput** more than it needs 99.9% p
 
 YOLOv11 delivers:
 - Single-pass inference (no region-proposal overhead of two-stage detectors)
-- `yolo11m` hits ~80fps on RTX 3080 at 640×640 input — sufficient for 8+ cameras at 10fps
+- `yolo11n` (nano) hits ~150fps on RTX 3080, ~15fps on modern CPU at 640×640 — sufficient for 5 cameras at 10fps without GPU
 - Pre-trained on COCO with strong `person` class performance
 - Native support for custom head training if staff uniform detection is needed
 - Ultralytics API is stable and actively maintained
@@ -82,41 +82,39 @@ Switch to StrongSORT or BoT-SORT if:
 
 ---
 
-## 3. Why Redis Streams
+## 3. Redis: Pubsub for WebSocket Fan-out (Not Streams for Frame Delivery)
 
 ### Decision
 
-Use Redis Streams as the inter-service message bus (frames, tracks, events).
+Use Redis **pub/sub** (`PUBLISH`/`SUBSCRIBE` on channel `store:events`) for WebSocket event fan-out. The tracker pushes events to the API via **HTTP batch POST** — not via Redis Streams.
 
 ### Reasoning
 
-Redis Streams were chosen over Kafka because:
+The original architecture considered Redis Streams as an inter-service message bus for frames and tracks. This was revised for three reasons:
 
-1. **Operational simplicity.** Redis is already a dependency (caching, WebSocket fan-out state). Adding Kafka adds ZooKeeper/KRaft, a broker cluster, and schema registry. For a single-store deployment, this overhead is not justified.
+1. **Frames are not inter-service data.** In the final design, YOLOv11 + ByteTrack + EventEngine all run inside one `tracker` process. There are no consumers of raw frame data outside that process. Streaming 10fps frames to Redis would have been `~30KB × 10fps × 5 cameras = 1.5MB/s` of Redis writes with no downstream consumer.
 
-2. **Consumer groups.** Redis Streams support `XREADGROUP` / `XACK` — exactly-once processing semantics with explicit acknowledgement. The event engine uses a consumer group so that if a worker crashes mid-frame, the unacknowledged message is redelivered.
+2. **Events are low-frequency.** Business events occur at ~1–10/s per camera, not 10fps. HTTP POST with 50-event batches and 1s flush gives the same throughput with zero broker overhead.
 
-3. **`MAXLEN` trim.** Raw frame bytes are large (~30KB JPEG). `XADD ... MAXLEN ~ 500` keeps the stream bounded without a separate retention job.
+3. **Pub/sub is the right primitive for WebSocket fan-out.** `PUBLISH store:events` broadcasts to all connected dashboard clients instantly. Streams would require consumer groups and coordination — unnecessary for broadcast semantics.
 
-4. **Sufficient throughput.** A single Redis node handles ~100k msg/s. For 8 cameras at 10fps with small track payloads, peak load is ~80 msg/s. Redis is not the bottleneck.
-
-5. **WebSocket fan-out.** The API layer can use Redis pub/sub on top of Streams for efficient broadcast to connected dashboard clients.
+Redis is still used for: WebSocket pubsub channel, and optionally as a cache layer.
 
 ### Alternatives considered
 
 | Alternative | Why not chosen |
 |---|---|
-| Kafka | Correct at scale, but cluster overhead unjustified for ≤16 cameras |
-| RabbitMQ | No native stream/log semantics; hard to replay frames |
-| ZeroMQ | No persistence, no consumer groups, no replay |
-| Direct gRPC between services | Tight coupling, no buffering if consumer is slow |
+| Redis Streams (Tracker → API) | Adds broker hop; frames processed in-process; events are low-volume |
+| Kafka | Correct at multi-store scale, but cluster overhead unjustified here |
+| RabbitMQ | No stream/log semantics; harder to replay |
+| Direct gRPC | Tight coupling, no buffering on API slowdown |
 
 ### When to revisit
 
-Migrate to Kafka if:
-- Deploying to 5+ stores with centralized analytics (multi-producer, multi-consumer)
-- Event retention requirement exceeds Redis memory budget
-- Compliance requires auditable, replayed event streams beyond Redis TTL
+Introduce Redis Streams or Kafka when:
+- Multiple tracker pods need fan-out to multiple API replicas
+- Event retention / replay becomes a compliance requirement
+- Multi-store deployment with a centralised analytics tier
 
 ---
 

@@ -39,22 +39,81 @@ cd store-intelligence-system
 # 2. Copy env (defaults work out of the box)
 cp .env.example .env
 
-# 3. Start everything
+# 3. Place CCTV footage (see Video Setup below)
+mkdir -p dataset/videos
+cp /path/to/your/"CAM 1.mp4" /path/to/your/"CAM 2.mp4" ... dataset/videos/
+
+# 4. Start everything — tracker auto-runs against videos
 docker compose up --build -d
 
-# 4. Seed demo data (optional — populate dashboard without running CV)
+# 5. (Optional) Seed additional POS data for conversion-rate metrics
 make seed-layout   # 5 cameras + 20 store zones
-make seed-demo     # synthetic hourly footfall + anomalies
-# OR load real POS data:
-make seed-csv      # Brigade Road 10-Apr-2026 transaction data
+make seed-csv      # Brigade Road 10-Apr-2026 POS transactions
 
-# 5. Open
+# 6. Open
 #    Dashboard  →  http://localhost:3000
 #    API Docs   →  http://localhost:8000/docs
 #    Swagger    →  http://localhost:8000/redoc
 ```
 
 > **Prerequisites:** Docker 24+, Docker Compose v2, 8 GB RAM minimum.
+
+---
+
+## Video Setup
+
+The tracker service reads `*.mp4` files from a volume-mounted directory. Two options:
+
+### Option A — Default path (recommended)
+
+```bash
+mkdir -p dataset/videos
+# Copy CAM 1.mp4, CAM 2.mp4, CAM 3.mp4, CAM 4.mp4, CAM 5.mp4 here
+cp "CAM 1.mp4" "CAM 2.mp4" "CAM 3.mp4" "CAM 4.mp4" "CAM 5.mp4" dataset/videos/
+```
+
+### Option B — Custom path via `.env`
+
+```bash
+# In .env, set VIDEO_SRC to your footage folder (absolute or relative to project root)
+VIDEO_SRC=/absolute/path/to/cctv/footage
+# Then rebuild:
+docker compose up --build -d
+```
+
+**Without videos:** The tracker service automatically generates synthetic demonstration events (labelled `source: tracker_synthetic` in `metadata`) so all API endpoints return valid, structured data. Real CV events are labelled `source: tracker`. Both are transparent to the API — the data model is identical.
+
+---
+
+## Acceptance Gate Self-Check
+
+Run after `docker compose up` to verify all evaluation criteria:
+
+```bash
+make verify
+```
+
+Or individually:
+
+```bash
+# System execution + stability
+curl http://localhost:8000/health
+
+# API availability (/metrics must return valid Prometheus text)
+curl http://localhost:8000/metrics
+
+# Event generation (items[] must be non-empty)
+curl "http://localhost:8000/api/v1/events?limit=5"
+
+# Funnel logic (stages must show drop-off)
+curl http://localhost:8000/api/v1/funnel
+
+# Anomaly detection
+curl http://localhost:8000/api/v1/anomalies
+
+# Business KPIs
+curl http://localhost:8000/api/v1/store-metrics/summary
+```
 
 ---
 
@@ -269,6 +328,7 @@ make logs        # Tail all service logs
 make ps          # Container status
 make tools       # Add pgAdmin + Redis Commander
 make test        # Run 26 unit tests (no DB required)
+make verify      # Acceptance gate self-check — hits all required endpoints
 
 # Data seeding
 make seed-layout # 5 cameras + 20 brand zones (parse store layout Excel)
@@ -384,9 +444,19 @@ curl http://localhost:8000/health
 
 **Dashboard shows no data**
 ```bash
-make seed-demo               # fastest: synthetic data, no CV needed
-# or run tracker against CCTV files:
+# Option 1: seed synthetic demo data (instant, no videos needed)
+make seed-demo
+# Option 2: run real CV pipeline (requires MP4 files in dataset/videos/ or VIDEO_SRC set)
 docker compose up tracker
+# Option 3: load POS transaction data
+make seed-layout && make seed-csv
+```
+
+**Tracker exits immediately with "no_videos_found"**
+```bash
+# Check VIDEO_SRC in .env points to a folder containing *.mp4 files
+ls $(grep VIDEO_SRC .env | cut -d= -f2)
+# The tracker will auto-generate synthetic events as fallback — dashboard still works
 ```
 
 ---

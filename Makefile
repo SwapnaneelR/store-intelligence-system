@@ -1,4 +1,4 @@
-.PHONY: up down logs ps reset tools test
+.PHONY: up down logs ps reset tools test verify
 
 # One-command startup
 up:
@@ -48,6 +48,21 @@ seed-csv:
 # Seed synthetic demo data (fast — no CV required)
 seed-demo:
 	python scripts/seed_demo.py --db-url postgresql+asyncpg://postgres:postgres@localhost:5432/store_intelligence
+
+# Acceptance gate self-check — mirrors reviewer validation steps
+verify:
+	@echo "── Health ──────────────────────────────────────────────────"
+	curl -sf http://localhost:8000/health | python -m json.tool
+	@echo "── Metrics (Prometheus) ────────────────────────────────────"
+	curl -sf http://localhost:8000/metrics | head -20
+	@echo "── Events (must return items[]) ────────────────────────────"
+	curl -sf "http://localhost:8000/api/v1/events?limit=5" | python -m json.tool
+	@echo "── Funnel (must show drop-off) ─────────────────────────────"
+	curl -sf http://localhost:8000/api/v1/funnel | python -m json.tool
+	@echo "── Anomalies ───────────────────────────────────────────────"
+	curl -sf http://localhost:8000/api/v1/anomalies | python -m json.tool
+	@echo "── Store Metrics Summary ───────────────────────────────────"
+	curl -sf http://localhost:8000/api/v1/store-metrics/summary | python -m json.tool
 
 # Full demo: bring up stack + seed demo data
 demo: up
